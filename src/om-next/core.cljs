@@ -3,38 +3,46 @@
             [om.next :as om :refer-macros [defui]]
             [om.dom :as dom]))
 
-(defonce app-state (atom {:count 0}))
+(enable-console-print!)
 
-(defui Counter
-  static om/IQuery
-  (query [this]
-    [:count])
-  Object
-  (render [this]
-          (let [count (:count (om/props this))]
-            (dom/div nil
-                     (dom/div nil (str "Count: " count))
-                     (dom/button
-                      #js {:onClick (fn [e]
-                                      (om/transact! this '[(increment)]))}
-                      "Increase")))))
+(def init-data
+  {:list/one [{:name "John" :points 0}
+              {:name "Mary" :points 0}
+              {:name "Bob"  :points 0}]
+   :list/two [{:name "Mary" :points 0 :age 27}
+              {:name "Gwen" :points 0}
+              {:name "Jeff" :points 0}]})
 
-(defn read
+(defmulti read om/dispatch)
+
+(defn get-people [state key]
+  (let [st @state]
+    (into [] (map #(get-in st %)) (get st key))))
+
+(defmethod read :list/one
   [{:keys [state] :as env} key params]
-  (let [st @state] 
-   (if-let [[_ v] (find st key)]
-      {:value v}
-      {:value :not-found})))
+  {:value (get-people state key)})
 
-(defn mutate [{:keys [state] :as env} key params]
-  (if (= 'increment key)
-    {:value {:keys [:count]}
-     :action #(swap! state update-in [:count] inc)}
-    {:value :not-found}))
+(defmethod read :list/two
+  [{:keys [state] :as env} key params]
+  {:value (get-people state key)})
 
-(def reconciler
-  (om/reconciler {:state app-state
-                  :parser (om/parser {:read read
-                                      :mutate mutate})}))
+(defmulti mutate om/dispatch)
 
-(om/add-root! reconciler Counter (gdom/getElement "app"))
+(defmethod mutate 'points/increment
+  [{:keys [state]} _ {:keys [name]}]
+  {:action
+   (fn []
+     (swap! state update-in
+       [:person/by-name name :points]
+       inc))})
+
+(defmethod mutate 'points/decrement
+  [{:keys [state]} _ {:keys [name]}]
+  {:action
+   (fn []
+     (swap! state update-in
+       [:person/by-name name :points]
+       #(let [n (dec %)] (if (neg? n) 0 n))))})
+
+(def parser (om/parser {:read read :mutate mutate}))
